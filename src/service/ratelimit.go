@@ -52,7 +52,7 @@ type service struct {
 	globalShadowMode            bool
 }
 
-func (this *service) SetConfig(updateEvent provider.ConfigUpdateEvent, healthyWithAtLeastOneConfigLoad bool) {
+func (s *service) SetConfig(updateEvent provider.ConfigUpdateEvent, healthyWithAtLeastOneConfigLoad bool) {
 	newConfig, err := updateEvent.GetConfig()
 	if err != nil {
 		configError, ok := err.(config.RateLimitConfigError)
@@ -60,7 +60,7 @@ func (this *service) SetConfig(updateEvent provider.ConfigUpdateEvent, healthyWi
 			panic(err)
 		}
 
-		this.stats.ConfigLoadError.Inc()
+		s.stats.ConfigLoadError.Inc()
 		logger.Errorf("Error loading new configuration: %s", configError.Error())
 		return
 	}
@@ -68,33 +68,33 @@ func (this *service) SetConfig(updateEvent provider.ConfigUpdateEvent, healthyWi
 	if healthyWithAtLeastOneConfigLoad {
 		err = nil
 		if !newConfig.IsEmptyDomains() {
-			err = this.health.Ok(server.ConfigHealthComponentName)
+			err = s.health.Ok(server.ConfigHealthComponentName)
 		} else {
-			err = this.health.Fail(server.ConfigHealthComponentName)
+			err = s.health.Fail(server.ConfigHealthComponentName)
 		}
 		if err != nil {
 			logger.Errorf("Unable to update health status: %s", err)
 		}
 	}
 
-	this.stats.ConfigLoadSuccess.Inc()
+	s.stats.ConfigLoadSuccess.Inc()
 
-	this.configLock.Lock()
-	this.config = newConfig
+	s.configLock.Lock()
+	s.config = newConfig
 
 	rlSettings := settings.NewSettings()
-	this.globalShadowMode = rlSettings.GlobalShadowMode
+	s.globalShadowMode = rlSettings.GlobalShadowMode
 
 	if rlSettings.RateLimitResponseHeadersEnabled {
-		this.customHeadersEnabled = true
+		s.customHeadersEnabled = true
 
-		this.customHeaderLimitHeader = rlSettings.HeaderRatelimitLimit
+		s.customHeaderLimitHeader = rlSettings.HeaderRatelimitLimit
 
-		this.customHeaderRemainingHeader = rlSettings.HeaderRatelimitRemaining
+		s.customHeaderRemainingHeader = rlSettings.HeaderRatelimitRemaining
 
-		this.customHeaderResetHeader = rlSettings.HeaderRatelimitReset
+		s.customHeaderResetHeader = rlSettings.HeaderRatelimitReset
 	}
-	this.configLock.Unlock()
+	s.configLock.Unlock()
 	logger.Info("Successfully loaded new configuration")
 }
 
@@ -110,7 +110,7 @@ func checkServiceErr(something bool, msg string) {
 	}
 }
 
-func (this *service) constructLimitsToCheck(request *pb.RateLimitRequest, ctx context.Context, snappedConfig config.RateLimitConfig) ([]*config.RateLimit, []bool) {
+func (s *service) constructLimitsToCheck(request *pb.RateLimitRequest, ctx context.Context, snappedConfig config.RateLimitConfig) ([]*config.RateLimit, []bool) {
 	checkServiceErr(snappedConfig != nil, "no rate limit configuration loaded")
 
 	limitsToCheck := make([]*config.RateLimit, len(request.Descriptors))
@@ -176,16 +176,16 @@ func (this *service) constructLimitsToCheck(request *pb.RateLimitRequest, ctx co
 
 const MaxUint32 = uint32(1<<32 - 1)
 
-func (this *service) shouldRateLimitWorker(
+func (s *service) shouldRateLimitWorker(
 	ctx context.Context, request *pb.RateLimitRequest) *pb.RateLimitResponse {
 
 	checkServiceErr(request.Domain != "", "rate limit domain must not be empty")
 	checkServiceErr(len(request.Descriptors) != 0, "rate limit descriptor list must not be empty")
 
-	snappedConfig, globalShadowMode := this.GetCurrentConfig()
-	limitsToCheck, isUnlimited := this.constructLimitsToCheck(request, ctx, snappedConfig)
+	snappedConfig, globalShadowMode := s.GetCurrentConfig()
+	limitsToCheck, isUnlimited := s.constructLimitsToCheck(request, ctx, snappedConfig)
 
-	responseDescriptorStatuses := this.cache.DoLimit(ctx, request, limitsToCheck)
+	responseDescriptorStatuses := s.cache.DoLimit(ctx, request, limitsToCheck)
 	assert.Assert(len(limitsToCheck) == len(responseDescriptorStatuses))
 
 	response := &pb.RateLimitResponse{}
@@ -198,7 +198,7 @@ func (this *service) shouldRateLimitWorker(
 
 	for i, descriptorStatus := range responseDescriptorStatuses {
 		// Keep track of the descriptor closest to hit the ratelimit
-		if this.customHeadersEnabled &&
+		if s.customHeadersEnabled &&
 			descriptorStatus.CurrentLimit != nil &&
 			descriptorStatus.LimitRemaining < minLimitRemaining {
 			minimumDescriptor = descriptorStatus
@@ -222,51 +222,51 @@ func (this *service) shouldRateLimitWorker(
 	}
 
 	// Add Headers if requested
-	if this.customHeadersEnabled && minimumDescriptor != nil {
+	if s.customHeadersEnabled && minimumDescriptor != nil {
 		response.ResponseHeadersToAdd = []*core.HeaderValue{
-			this.rateLimitLimitHeader(minimumDescriptor),
-			this.rateLimitRemainingHeader(minimumDescriptor),
-			this.rateLimitResetHeader(minimumDescriptor),
+			s.rateLimitLimitHeader(minimumDescriptor),
+			s.rateLimitRemainingHeader(minimumDescriptor),
+			s.rateLimitResetHeader(minimumDescriptor),
 		}
 	}
 
 	// If there is a global shadow_mode, it should always return OK
 	if finalCode == pb.RateLimitResponse_OVER_LIMIT && globalShadowMode {
 		finalCode = pb.RateLimitResponse_OK
-		this.stats.GlobalShadowMode.Inc()
+		s.stats.GlobalShadowMode.Inc()
 	}
 
 	response.OverallCode = finalCode
 	return response
 }
 
-func (this *service) rateLimitLimitHeader(descriptor *pb.RateLimitResponse_DescriptorStatus) *core.HeaderValue {
+func (s *service) rateLimitLimitHeader(descriptor *pb.RateLimitResponse_DescriptorStatus) *core.HeaderValue {
 	// Limit header only provides the mandatory part from the spec, the actual limit
 	// the optional quota policy is currently not provided
 	return &core.HeaderValue{
-		Key:   this.customHeaderLimitHeader,
+		Key:   s.customHeaderLimitHeader,
 		Value: strconv.FormatUint(uint64(descriptor.CurrentLimit.RequestsPerUnit), 10),
 	}
 }
 
-func (this *service) rateLimitRemainingHeader(descriptor *pb.RateLimitResponse_DescriptorStatus) *core.HeaderValue {
+func (s *service) rateLimitRemainingHeader(descriptor *pb.RateLimitResponse_DescriptorStatus) *core.HeaderValue {
 	// How much of the limit is remaining
 	return &core.HeaderValue{
-		Key:   this.customHeaderRemainingHeader,
+		Key:   s.customHeaderRemainingHeader,
 		Value: strconv.FormatUint(uint64(descriptor.LimitRemaining), 10),
 	}
 }
 
-func (this *service) rateLimitResetHeader(
+func (s *service) rateLimitResetHeader(
 	descriptor *pb.RateLimitResponse_DescriptorStatus) *core.HeaderValue {
 
 	return &core.HeaderValue{
-		Key:   this.customHeaderResetHeader,
-		Value: strconv.FormatInt(utils.CalculateReset(&descriptor.CurrentLimit.Unit, this.customHeaderClock).GetSeconds(), 10),
+		Key:   s.customHeaderResetHeader,
+		Value: strconv.FormatInt(utils.CalculateReset(&descriptor.CurrentLimit.Unit, s.customHeaderClock).GetSeconds(), 10),
 	}
 }
 
-func (this *service) ShouldRateLimit(
+func (s *service) ShouldRateLimit(
 	ctx context.Context,
 	request *pb.RateLimitRequest) (finalResponse *pb.RateLimitResponse, finalError error) {
 
@@ -290,12 +290,12 @@ func (this *service) ShouldRateLimit(
 		switch t := err.(type) {
 		case redis.RedisError:
 			{
-				this.stats.ShouldRateLimit.RedisError.Inc()
+				s.stats.ShouldRateLimit.RedisError.Inc()
 				finalError = t
 			}
 		case serviceError:
 			{
-				this.stats.ShouldRateLimit.ServiceError.Inc()
+				s.stats.ShouldRateLimit.ServiceError.Inc()
 				finalError = t
 			}
 		default:
@@ -303,16 +303,16 @@ func (this *service) ShouldRateLimit(
 		}
 	}()
 
-	response := this.shouldRateLimitWorker(ctx, request)
+	response := s.shouldRateLimitWorker(ctx, request)
 	logger.Debugf("returning normal response")
 
 	return response, nil
 }
 
-func (this *service) GetCurrentConfig() (config.RateLimitConfig, bool) {
-	this.configLock.RLock()
-	defer this.configLock.RUnlock()
-	return this.config, this.globalShadowMode
+func (s *service) GetCurrentConfig() (config.RateLimitConfig, bool) {
+	s.configLock.RLock()
+	defer s.configLock.RUnlock()
+	return s.config, s.globalShadowMode
 }
 
 func NewService(cache limiter.RateLimitCache, configProvider provider.RateLimitConfigProvider, statsManager stats.Manager,

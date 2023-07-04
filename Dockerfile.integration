@@ -5,7 +5,8 @@ RUN apt-get update -y && apt-get install sudo stunnel4 redis memcached -y && rm 
 
 WORKDIR /workdir
 
-ENV GOPROXY=https://proxy.golang.org
+# ENV GOPROXY=https://proxy.golang.org
+ENV GOPROXY=https://mirrors.aliyun.com/goproxy/
 COPY go.mod go.sum /workdir/
 RUN go mod download
 

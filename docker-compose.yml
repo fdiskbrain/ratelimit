@@ -26,6 +26,8 @@ services:
     volumes:
       - .:/go/src/github.com/envoyproxy/ratelimit
       - binary:/usr/local/bin/
+    environment:
+    - GOPROXY=https://mirrors.aliyun.com/goproxy/
 
   ratelimit-client-build:
     image: golang:1.20-alpine
@@ -34,7 +36,8 @@ services:
     volumes:
       - .:/go/src/github.com/envoyproxy/ratelimit
       - binary:/usr/local/bin/
-
+    environment:  
+    - GOPROXY=https://mirrors.aliyun.com/goproxy/
   ratelimit:
     image: alpine:3.6
     command: >

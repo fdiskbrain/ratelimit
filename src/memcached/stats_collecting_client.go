@@ -36,44 +36,44 @@ func CollectStats(c Client, scope stats.Scope) Client {
 	}
 }
 
-func (scc statsCollectingClient) GetMulti(keys []string) (map[string]*memcache.Item, error) {
-	scc.keysRequested.Add(uint64(len(keys)))
+func (s statsCollectingClient) GetMulti(keys []string) (map[string]*memcache.Item, error) {
+	s.keysRequested.Add(uint64(len(keys)))
 
-	results, err := scc.c.GetMulti(keys)
+	results, err := s.c.GetMulti(keys)
 
 	if err != nil {
-		scc.multiGetError.Inc()
+		s.multiGetError.Inc()
 	} else {
-		scc.keysFound.Add(uint64(len(results)))
-		scc.multiGetSuccess.Inc()
+		s.keysFound.Add(uint64(len(results)))
+		s.multiGetSuccess.Inc()
 	}
 
 	return results, err
 }
 
-func (scc statsCollectingClient) Increment(key string, delta uint64) (newValue uint64, err error) {
-	newValue, err = scc.c.Increment(key, delta)
+func (s statsCollectingClient) Increment(key string, delta uint64) (newValue uint64, err error) {
+	newValue, err = s.c.Increment(key, delta)
 	switch err {
 	case memcache.ErrCacheMiss:
-		scc.incrementMiss.Inc()
+		s.incrementMiss.Inc()
 	case nil:
-		scc.incrementSuccess.Inc()
+		s.incrementSuccess.Inc()
 	default:
-		scc.incrementError.Inc()
+		s.incrementError.Inc()
 	}
 	return
 }
 
-func (scc statsCollectingClient) Add(item *memcache.Item) error {
-	err := scc.c.Add(item)
+func (s statsCollectingClient) Add(item *memcache.Item) error {
+	err := s.c.Add(item)
 
 	switch err {
 	case memcache.ErrNotStored:
-		scc.addNotStored.Inc()
+		s.addNotStored.Inc()
 	case nil:
-		scc.addSuccess.Inc()
+		s.addSuccess.Inc()
 	default:
-		scc.addError.Inc()
+		s.addError.Inc()
 	}
 
 	return err

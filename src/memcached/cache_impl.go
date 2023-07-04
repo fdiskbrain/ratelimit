@@ -61,7 +61,7 @@ var AutoFlushForIntegrationTests bool = false
 
 var _ limiter.RateLimitCache = (*rateLimitMemcacheImpl)(nil)
 
-func (this *rateLimitMemcacheImpl) DoLimit(
+func (r *rateLimitMemcacheImpl) DoLimit(
 	ctx context.Context,
 	request *pb.RateLimitRequest,
 	limits []*config.RateLimit) []*pb.RateLimitResponse_DescriptorStatus {
@@ -72,7 +72,7 @@ func (this *rateLimitMemcacheImpl) DoLimit(
 	hitsAddend := utils.Max(1, request.HitsAddend)
 
 	// First build a list of all cache keys that we are actually going to hit.
-	cacheKeys := this.baseRateLimiter.GenerateCacheKeys(request, limits, hitsAddend)
+	cacheKeys := r.baseRateLimiter.GenerateCacheKeys(request, limits, hitsAddend)
 
 	isOverLimitWithLocalCache := make([]bool, len(request.Descriptors))
 
@@ -84,7 +84,7 @@ func (this *rateLimitMemcacheImpl) DoLimit(
 		}
 
 		// Check if key is over the limit in local cache.
-		if this.baseRateLimiter.IsOverLimitWithLocalCache(cacheKey.Key) {
+		if r.baseRateLimiter.IsOverLimitWithLocalCache(cacheKey.Key) {
 			isOverLimitWithLocalCache[i] = true
 			logger.Debugf("cache key is over the limit: %s", cacheKey.Key)
 			continue
@@ -110,7 +110,7 @@ func (this *rateLimitMemcacheImpl) DoLimit(
 	var err error
 
 	if len(keysToGet) > 0 {
-		memcacheValues, err = this.client.GetMulti(keysToGet)
+		memcacheValues, err = r.client.GetMulti(keysToGet)
 		if err != nil {
 			logger.Errorf("Error multi-getting memcache keys (%s): %s", keysToGet, err)
 		}
@@ -134,36 +134,36 @@ func (this *rateLimitMemcacheImpl) DoLimit(
 
 		limitInfo := limiter.NewRateLimitInfo(limits[i], limitBeforeIncrease, limitAfterIncrease, 0, 0)
 
-		responseDescriptorStatuses[i] = this.baseRateLimiter.GetResponseDescriptorStatus(cacheKey.Key,
+		responseDescriptorStatuses[i] = r.baseRateLimiter.GetResponseDescriptorStatus(cacheKey.Key,
 			limitInfo, isOverLimitWithLocalCache[i], hitsAddend)
 	}
 
-	this.waitGroup.Add(1)
-	runAsync(func() { this.increaseAsync(cacheKeys, isOverLimitWithLocalCache, limits, uint64(hitsAddend)) })
+	r.waitGroup.Add(1)
+	runAsync(func() { r.increaseAsync(cacheKeys, isOverLimitWithLocalCache, limits, uint64(hitsAddend)) })
 	if AutoFlushForIntegrationTests {
-		this.Flush()
+		r.Flush()
 	}
 
 	return responseDescriptorStatuses
 }
 
-func (this *rateLimitMemcacheImpl) increaseAsync(cacheKeys []limiter.CacheKey, isOverLimitWithLocalCache []bool,
+func (r *rateLimitMemcacheImpl) increaseAsync(cacheKeys []limiter.CacheKey, isOverLimitWithLocalCache []bool,
 	limits []*config.RateLimit, hitsAddend uint64) {
-	defer this.waitGroup.Done()
+	defer r.waitGroup.Done()
 	for i, cacheKey := range cacheKeys {
 		if cacheKey.Key == "" || isOverLimitWithLocalCache[i] {
 			continue
 		}
 
-		_, err := this.client.Increment(cacheKey.Key, hitsAddend)
+		_, err := r.client.Increment(cacheKey.Key, hitsAddend)
 		if err == memcache.ErrCacheMiss {
 			expirationSeconds := utils.UnitToDivider(limits[i].Limit.Unit)
-			if this.expirationJitterMaxSeconds > 0 {
-				expirationSeconds += this.jitterRand.Int63n(this.expirationJitterMaxSeconds)
+			if r.expirationJitterMaxSeconds > 0 {
+				expirationSeconds += r.jitterRand.Int63n(r.expirationJitterMaxSeconds)
 			}
 
 			// Need to add instead of increment.
-			err = this.client.Add(&memcache.Item{
+			err = r.client.Add(&memcache.Item{
 				Key:        cacheKey.Key,
 				Value:      []byte(strconv.FormatUint(hitsAddend, 10)),
 				Expiration: int32(expirationSeconds),
@@ -171,7 +171,7 @@ func (this *rateLimitMemcacheImpl) increaseAsync(cacheKeys []limiter.CacheKey, i
 			if err == memcache.ErrNotStored {
 				// There was a race condition to do this add. We should be able to increment
 				// now instead.
-				_, err := this.client.Increment(cacheKey.Key, hitsAddend)
+				_, err := r.client.Increment(cacheKey.Key, hitsAddend)
 				if err != nil {
 					logger.Errorf("Failed to increment key %s after failing to add: %s", cacheKey.Key, err)
 					continue
@@ -187,8 +187,8 @@ func (this *rateLimitMemcacheImpl) increaseAsync(cacheKeys []limiter.CacheKey, i
 	}
 }
 
-func (this *rateLimitMemcacheImpl) Flush() {
-	this.waitGroup.Wait()
+func (r *rateLimitMemcacheImpl) Flush() {
+	r.waitGroup.Wait()
 }
 
 func refreshServersPeriodically(serverList *memcache.ServerList, srv string, d time.Duration, resolver srv.SrvResolver, finish <-chan struct{}) {

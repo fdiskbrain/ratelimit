@@ -1,7 +1,8 @@
 FROM golang:1.20.5 AS build
 WORKDIR /ratelimit
 
-ENV GOPROXY=https://proxy.golang.org
+# ENV GOPROXY=https://proxy.golang.org
+ENV GOPROXY=https://mirrors.aliyun.com/goproxy/
 COPY go.mod go.sum /ratelimit/
 RUN go mod download
 

@@ -4,10 +4,10 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/kelseyhightower/envconfig"
 	"google.golang.org/grpc"
 
 	"github.com/envoyproxy/ratelimit/src/utils"
+	"github.com/kelseyhightower/envconfig"
 )
 
 type Settings struct {
@@ -167,33 +167,43 @@ type Settings struct {
 	TracingSamplingRate float64 `envconfig:"TRACING_SAMPLING_RATE" default:"1"`
 }
 
-type Option func(*Settings)
+type Option = func(c *Settings)
 
-func NewSettings() Settings {
-	var s Settings
-	if err := envconfig.Process("", &s); err != nil {
+func NewSettings(opts ...Option) *Settings {
+	c := &Settings{}
+
+	if err := envconfig.Process("", c); err != nil {
 		panic(err)
 	}
-	// When we require TLS to connect to Redis, we check if we need to connect using the provided key-pair.
-	RedisTlsConfig(s.RedisTls || s.RedisPerSecondTls)(&s)
-	GrpcServerTlsConfig()(&s)
-	ConfigGrpcXdsServerTlsConfig()(&s)
-	return s
+	opts = append(opts, withDefaults()...)
+	for _, opt := range opts {
+		opt(c)
+	}
+	// // When we require TLS to connect to Redis, we check if we need to connect using the provided key-pair.
+	// RedisTlsConfig(s.RedisTls || s.RedisPerSecondTls)(&s)
+	// GrpcServerTlsConfig()(&s)
+	// ConfigGrpcXdsServerTlsConfig()(&s)
+	return c
 }
 
-func RedisTlsConfig(redisTls bool) Option {
+func withDefaults() []Option {
+	return []Option{WithGrpcServerTls(), WithGrpcXdsServerTls(), WithRedisTls()}
+}
+
+func WithRedisTls() Option {
 	return func(s *Settings) {
 		// Golang copy-by-value causes the RootCAs to no longer be nil
 		// which isn't the expected default behavior of continuing to use system roots
 		// so let's just initialize to what we want the correct value to be.
 		s.RedisTlsConfig = &tls.Config{}
+		redisTls := s.RedisTls || s.RedisPerSecondTls
 		if redisTls {
 			s.RedisTlsConfig = utils.TlsConfigFromFiles(s.RedisTlsClientCert, s.RedisTlsClientKey, s.RedisTlsCACert, utils.ServerCA, s.RedisTlsSkipHostnameVerification)
 		}
 	}
 }
 
-func GrpcServerTlsConfig() Option {
+func WithGrpcServerTls() Option {
 	return func(s *Settings) {
 		if s.GrpcServerUseTLS {
 			grpcServerTlsConfig := utils.TlsConfigFromFiles(s.GrpcServerTlsCert, s.GrpcServerTlsKey, s.GrpcClientTlsCACert, utils.ClientCA, false)
@@ -207,7 +217,7 @@ func GrpcServerTlsConfig() Option {
 	}
 }
 
-func ConfigGrpcXdsServerTlsConfig() Option {
+func WithGrpcXdsServerTls() Option {
 	return func(s *Settings) {
 		if s.ConfigGrpcXdsServerUseTls {
 			configGrpcXdsServerTlsConfig := utils.TlsConfigFromFiles(s.ConfigGrpcXdsClientTlsCert, s.ConfigGrpcXdsClientTlsKey, s.ConfigGrpcXdsServerTlsCACert, utils.ServerCA, false)

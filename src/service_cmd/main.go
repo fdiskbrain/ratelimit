@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
-	runner := runner.NewRunner(settings.NewSettings())
+	cfg := settings.NewSettings()
+	runner := runner.NewRunner(cfg)
 	runner.Run()
 }

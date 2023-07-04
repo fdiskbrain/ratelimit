@@ -30,7 +30,7 @@ func ParseSrv(srv string) (string, string, string, error) {
 	return matches[1], matches[2], matches[3], nil
 }
 
-func (dnsSrvResolver DnsSrvResolver) ServerStringsFromSrv(srv string) ([]string, error) {
+func (d DnsSrvResolver) ServerStringsFromSrv(srv string) ([]string, error) {
 	return lookupServerStringsFromSrv(srv, net.LookupSRV)
 }
 

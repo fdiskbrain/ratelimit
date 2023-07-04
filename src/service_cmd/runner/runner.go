@@ -37,10 +37,10 @@ type Runner struct {
 	mu           sync.Mutex
 }
 
-func NewRunner(s settings.Settings) Runner {
+func NewRunner(s *settings.Settings) Runner {
 	return Runner{
-		statsManager: stats.NewStatManager(gostats.NewDefaultStore(), s),
-		settings:     s,
+		statsManager: stats.NewStatManager(gostats.NewDefaultStore(), *s),
+		settings:     *s,
 	}
 }
 
