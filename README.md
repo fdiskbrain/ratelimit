@@ -68,6 +68,8 @@ applications. Applications request a rate limit decision based on a domain and a
 reads the configuration from disk via [runtime](https://github.com/lyft/goruntime), composes a cache key, and talks to the Redis cache. A
 decision is then returned to the caller.
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/envoyproxy/ratelimit/badge)](https://securityscorecards.dev/viewer/?uri=github.com/envoyproxy/ratelimit)
+
 # Docker Image
 
 For every main commit, an image is pushed to [Dockerhub](https://hub.docker.com/r/envoyproxy/ratelimit/tags?page=1&ordering=last_updated). There is currently no versioning (post v1.4.0) and tags are based on commit sha.
@@ -645,7 +647,15 @@ To enable this behavior set `MERGE_DOMAIN_CONFIG` to `true`.
 xDS Management Server is a gRPC server which implements the [Aggregated Discovery Service (ADS)](https://github.com/envoyproxy/data-plane-api/blob/97b6dae39046f7da1331a4dc57830d20e842fc26/envoy/service/discovery/v3/ads.proto).
 The xDS Management server serves [Discovery Response](https://github.com/envoyproxy/data-plane-api/blob/97b6dae39046f7da1331a4dc57830d20e842fc26/envoy/service/discovery/v3/discovery.proto#L69) with [Ratelimit Configuration Resources](api/ratelimit/config/ratelimit/v3/rls_conf.proto)
 and with Type URL `"type.googleapis.com/ratelimit.config.ratelimit.v3.RateLimitConfig"`.
+
 The xDS client in the Rate limit service configure Rate limit service with the provided configuration.
+In case of connection failures, the xDS Client retries the connection to the xDS server with exponential backoff and the backoff parameters are configurable.
+
+1. `XDS_CLIENT_BACKOFF_JITTER`: set to `"true"` to add jitter to the exponential backoff.
+2. `XDS_CLIENT_BACKOFF_INITIAL_INTERVAL`: The base amount of time the xDS client waits before retyring the connection after failure. Default: "10s"
+3. `XDS_CLIENT_BACKOFF_MAX_INTERVAL`: The max backoff interval is the upper limit on the amount of time the xDS client will wait between retries. After reaching the max backoff interval, the next retries will continue using the max interval. Default: "60s"
+4. `XDS_CLIENT_BACKOFF_RANDOM_FACTOR`: This is a factor by which the initial interval is multiplied to calculate the next backoff interval. Default: "0.5"
+
 For more information on xDS protocol please refer to the [envoy proxy documentation](https://www.envoyproxy.io/docs/envoy/latest/api-docs/xds_protocol).
 
 You can refer to [the sample xDS configuration management server](examples/xds-sotw-config-server/README.md).
@@ -904,6 +914,12 @@ As well Ratelimit supports TLS connections and authentication. These can be conf
 1. `REDIS_AUTH` & `REDIS_PERSECOND_AUTH`: set to `"username:password"` to enable username-password authentication to the redis host.
 1. `CACHE_KEY_PREFIX`: a string to prepend to all cache keys
 
+For controlling the behavior of cache key incrementation when any of them is already over the limit, you can use the following configuration:
+
+1. `STOP_CACHE_KEY_INCREMENT_WHEN_OVERLIMIT`: Set this configuration to `true` to disallow key incrementation when one of the keys is already over the limit.
+
+`STOP_CACHE_KEY_INCREMENT_WHEN_OVERLIMIT` is useful when multiple descriptors are included in a single request. Setting this to `true` can prevent the incrementation of other descriptors' counters if any of the descriptors is already over the limit.
+
 ## Redis type
 
 Ratelimit supports different types of redis deployments:
@@ -997,15 +1013,6 @@ The following environment variables control the custom response feature:
 1. `LIMIT_REMAINING_HEADER` - The default value is "RateLimit-Remaining", setting the environment variable will specify an alternative header name
 1. `LIMIT_RESET_HEADER` - The default value is "RateLimit-Reset", setting the environment variable will specify an alternative header name
 
-You may use the following commands to quickly setup a openTelemetry collector together with a Jaeger all-in-one binary for quickstart:
-
-```bash
-docker run --name otlp -d -p 4318 -p 4317 -v examples/otlp-collector:/tmp/otlp-collector otel/opentelemetry-collector:0.48.0 -- --config /tmp/otlp-collector/config.yaml
-otelcol-contrib --config examples/otlp-collector/config.yaml
-
-docker run -d --name jaeger -p 16686:16686 -p 14250:14250 jaegertracing/all-in-one:1.33
-```
-
 # Tracing
 
 Ratelimit service supports exporting spans in OLTP format. See [OpenTelemetry](https://opentelemetry.io/) for more information.
@@ -1019,6 +1026,15 @@ The following environment variables control the tracing feature:
 1. `TRACING_SERVICE_INSTANCE_ID` - Controls the service instance id appears in tracing span. It is recommended to put the pod name or container name in this field. The default value is a randomly generated version 4 uuid if unspecified.
 1. Other fields in [OTLP Exporter Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/v1.8.0/specification/protocol/exporter.md). These section needs to be correctly configured in order to enable the exporter to export span to the correct destination.
 1. `TRACING_SAMPLING_RATE` - Controls the sampling rate, defaults to 1 which means always sample. Valid range: 0.0-1.0. For high volume services, adjusting the sampling rate is recommended.
+
+You may use the following commands to quickly setup a openTelemetry collector together with a Jaeger all-in-one binary for quickstart:
+
+```bash
+docker run --name otlp -d -p 4318 -p 4317 -v examples/otlp-collector:/tmp/otlp-collector otel/opentelemetry-collector:0.48.0 -- --config /tmp/otlp-collector/config.yaml
+otelcol-contrib --config examples/otlp-collector/config.yaml
+
+docker run -d --name jaeger -p 16686:16686 -p 14250:14250 jaegertracing/all-in-one:1.33
+```
 
 # mTLS
 

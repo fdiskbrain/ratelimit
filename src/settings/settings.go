@@ -69,6 +69,12 @@ type Settings struct {
 	// GrpcClientTlsSAN is the SAN to validate from the client cert during mTLS auth
 	ConfigGrpcXdsServerTlsSAN string `envconfig:"CONFIG_GRPC_XDS_SERVER_TLS_SAN" default:""`
 
+	// xDS client backoff configuration
+	XdsClientBackoffInitialInterval time.Duration `envconfig:"XDS_CLIENT_BACKOFF_INITIAL_INTERVAL" default:"10s"`
+	XdsClientBackoffMaxInterval     time.Duration `envconfig:"XDS_CLIENT_BACKOFF_MAX_INTERVAL" default:"60s"`
+	XdsClientBackoffRandomFactor    float64       `envconfig:"XDS_CLIENT_BACKOFF_RANDOM_FACTOR" default:"0.5"`
+	XdsClientBackoffJitter          bool          `envconfig:"XDS_CLIENT_BACKOFF_JITTER" default:"true"`
+
 	// Stats-related settings
 	UseStatsd  bool              `envconfig:"USE_STATSD" default:"true"`
 	StatsdHost string            `envconfig:"STATSD_HOST" default:"localhost"`
@@ -83,11 +89,12 @@ type Settings struct {
 	RuntimeWatchRoot      bool   `envconfig:"RUNTIME_WATCH_ROOT" default:"true"`
 
 	// Settings for all cache types
-	ExpirationJitterMaxSeconds int64   `envconfig:"EXPIRATION_JITTER_MAX_SECONDS" default:"300"`
-	LocalCacheSizeInBytes      int     `envconfig:"LOCAL_CACHE_SIZE_IN_BYTES" default:"0"`
-	NearLimitRatio             float32 `envconfig:"NEAR_LIMIT_RATIO" default:"0.8"`
-	CacheKeyPrefix             string  `envconfig:"CACHE_KEY_PREFIX" default:""`
-	BackendType                string  `envconfig:"BACKEND_TYPE" default:"redis"`
+	ExpirationJitterMaxSeconds         int64   `envconfig:"EXPIRATION_JITTER_MAX_SECONDS" default:"300"`
+	LocalCacheSizeInBytes              int     `envconfig:"LOCAL_CACHE_SIZE_IN_BYTES" default:"0"`
+	NearLimitRatio                     float32 `envconfig:"NEAR_LIMIT_RATIO" default:"0.8"`
+	CacheKeyPrefix                     string  `envconfig:"CACHE_KEY_PREFIX" default:""`
+	BackendType                        string  `envconfig:"BACKEND_TYPE" default:"redis"`
+	StopCacheKeyIncrementWhenOverlimit bool    `envconfig:"STOP_CACHE_KEY_INCREMENT_WHEN_OVERLIMIT" default:"false"`
 
 	// Settings for optional returning of custom headers
 	RateLimitResponseHeadersEnabled bool `envconfig:"LIMIT_RESPONSE_HEADERS_ENABLED" default:"false"`
